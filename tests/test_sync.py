@@ -113,6 +113,41 @@ def test_dry_run_makes_no_changes():
     assert scim.list_groups() == []
 
 
+def test_dry_run_counts_group_update_for_new_member():
+    # A new member joining an existing role must show up as a would-be group
+    # update in the dry-run report, even though the user isn't created yet.
+    roles = [role("200", "Staff")]
+    settings = make_settings()
+    scim, _ = run_sync([member("1", "alice", roles=["200"])], roles, settings)
+
+    _, report = run_sync(
+        [member("1", "alice", roles=["200"]), member("2", "bob", roles=["200"])],
+        roles,
+        settings,
+        scim=scim,
+        dry_run=True,
+    )
+    assert report.users_created == 1  # bob
+    assert report.groups_updated == 1  # Staff gains bob
+    # Nothing actually changed on the SCIM side.
+    assert len(scim.list_users()) == 1
+    (group,) = scim.list_groups()
+    assert len(group["members"]) == 1
+
+
+def test_roles_not_fetched_when_groups_disabled():
+    class NoRolesDiscord(FakeDiscordClient):
+        def list_guild_roles(self, guild_id):
+            raise AssertionError("roles must not be fetched when groups are disabled")
+
+    discord = NoRolesDiscord([member("1", "alice", roles=["200"])], [])
+    scim = FakeScimClient()
+    report = SyncEngine(discord, scim, make_settings(manage_groups=False)).run()
+    assert report.users_created == 1
+    assert report.groups_created == 0
+    assert scim.list_groups() == []
+
+
 def test_foreign_scim_resources_are_untouched():
     scim = FakeScimClient()
     # A user owned by some other provisioning source.

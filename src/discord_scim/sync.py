@@ -75,9 +75,15 @@ class SyncEngine:
     def run(self, *, dry_run: bool = False) -> SyncReport:
         report = SyncReport(dry_run=dry_run)
 
-        # 1. Read desired state from Discord.
+        # 1. Read desired state from Discord. Only fetch roles when we actually
+        # mirror them as groups, so a user-only deployment never fails on the
+        # role endpoint.
         members = self.discord.list_guild_members(self.settings.discord_guild_id)
-        roles = self.discord.list_guild_roles(self.settings.discord_guild_id)
+        roles = (
+            self.discord.list_guild_roles(self.settings.discord_guild_id)
+            if self.settings.manage_groups
+            else []
+        )
         desired_users = build_desired_users(members, self.settings)
         desired_groups = build_desired_groups(members, roles, self.settings)
 
@@ -111,6 +117,9 @@ class SyncEngine:
                 if report.dry_run:
                     report.users_created += 1
                     report.record(f"create user {desired.user_name}")
+                    # Record a placeholder id so the group diff still counts
+                    # this would-be user as a new member of any existing group.
+                    user_id_map[ext_id] = f"dry-run:{ext_id}"
                     continue
                 created = self.scim.create_user(desired.to_scim())
                 user_id_map[ext_id] = created["id"]
