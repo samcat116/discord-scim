@@ -103,6 +103,26 @@ def test_group_with_null_members_is_in_sync():
     assert report.groups_created == 0
 
 
+def test_user_with_null_emails_updates_without_crashing():
+    # A provider that stored the user with emails: null must not crash the
+    # email comparison when EMAIL_DOMAIN is configured.
+    settings = make_settings(email_domain="example.com")
+    scim = FakeScimClient()
+    scim.create_user(
+        {
+            "externalId": "discord:user:1",
+            "userName": "alice.1@example.com",
+            "displayName": "alice",
+            "active": True,
+            "emails": None,
+        }
+    )
+    _, report = run_sync([member("1", "alice")], [], settings, scim=scim)
+    assert report.users_updated == 1
+    (user,) = scim.list_users()
+    assert user["emails"] == [{"value": "alice.1@example.com", "primary": True, "type": "work"}]
+
+
 def test_dry_run_makes_no_changes():
     members = [member("1", "alice", roles=["200"])]
     roles = [role("200", "Staff")]

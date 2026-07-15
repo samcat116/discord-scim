@@ -48,7 +48,8 @@ def _user_needs_update(desired: DesiredUser, current: dict) -> bool:
     if current.get("active", True) != desired.active:
         return True
     if desired.email:
-        emails = {e.get("value") for e in current.get("emails", [])}
+        # A provider may serialize an unset multi-valued field as null.
+        emails = {e.get("value") for e in (current.get("emails") or [])}
         if desired.email not in emails:
             return True
     return False
