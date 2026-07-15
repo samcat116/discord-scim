@@ -9,9 +9,11 @@ the same interface Okta, Entra ID, and other IdPs use.
 - **Groups** — each Discord role becomes a SCIM `Group`, with members mirrored
   from role assignments.
 - **Deprovisioning** — members who leave the guild are deactivated (or deleted).
-- **Safe** — every resource is tagged with an `externalId` prefix, so the adapter
-  only ever touches users and groups it created; existing resources from other
-  sources are never modified.
+- **Safe** — every resource is tagged with a guild-scoped `externalId`
+  (`<prefix>:<guild_id>:…`), so the adapter only ever touches users and groups it
+  created for *this* guild; resources from other sources — or other guilds sharing
+  the same app — are never modified. An empty Discord member snapshot refuses to
+  run rather than deprovisioning everyone.
 
 ```
   Discord guild                discord-scim               your app (SCIM 2.0)
@@ -82,6 +84,7 @@ Configuration is read from environment variables or `.env`. See
 | `MANAGE_GROUPS` | | Mirror roles as groups (default `true`). |
 | `DEPROVISION_ACTION` | | `deactivate` (default) or `delete`. |
 | `INCLUDE_BOTS` | | Provision bot accounts too (default `false`). |
+| `ALLOW_EMPTY_GUILD` | | Permit a run when Discord returns zero members (default `false`). |
 
 ## Running with Docker
 

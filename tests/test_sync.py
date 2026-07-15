@@ -1,6 +1,7 @@
+import pytest
 from conftest import FakeDiscordClient, FakeScimClient, make_settings, member, role
 
-from discord_scim.sync import SyncEngine
+from discord_scim.sync import EmptyGuildSnapshot, SyncEngine
 
 
 def run_sync(members, roles, settings, *, scim=None, dry_run=False):
@@ -44,21 +45,25 @@ def test_second_run_is_idempotent():
 def test_leaving_member_is_deactivated():
     roles = [role("200", "Staff")]
     settings = make_settings()
-    scim, _ = run_sync([member("1", "alice", roles=["200"])], roles, settings)
+    scim, _ = run_sync(
+        [member("1", "alice", roles=["200"]), member("2", "bob", roles=["200"])],
+        roles,
+        settings,
+    )
 
-    # Alice leaves the guild.
-    _, report = run_sync([], roles, settings, scim=scim)
+    # Alice leaves the guild; bob remains.
+    _, report = run_sync([member("2", "bob", roles=["200"])], roles, settings, scim=scim)
     assert report.users_deactivated == 1
-    (user,) = scim.list_users()
-    assert user["active"] is False
+    alice = next(u for u in scim.list_users() if u["externalId"] == "discord:100:user:1")
+    assert alice["active"] is False
 
 
 def test_leaving_member_is_deleted_when_configured():
     settings = make_settings(deprovision_action="delete")
-    scim, _ = run_sync([member("1", "alice")], [], settings)
-    _, report = run_sync([], [], settings, scim=scim)
+    scim, _ = run_sync([member("1", "alice"), member("2", "bob")], [], settings)
+    _, report = run_sync([member("2", "bob")], [], settings, scim=scim)
     assert report.users_deleted == 1
-    assert scim.list_users() == []
+    assert {u["externalId"] for u in scim.list_users()} == {"discord:100:user:2"}
 
 
 def test_role_change_updates_group_membership():
@@ -96,7 +101,7 @@ def test_group_with_null_members_is_in_sync():
     settings = make_settings()
     scim = FakeScimClient()
     scim.create_group(
-        {"externalId": "discord:role:200", "displayName": "Staff", "members": None}
+        {"externalId": "discord:100:role:200", "displayName": "Staff", "members": None}
     )
     _, report = run_sync([member("1", "a", roles=[])], [role("200", "Staff")], settings, scim=scim)
     assert report.groups_updated == 0
@@ -110,7 +115,7 @@ def test_user_with_null_emails_updates_without_crashing():
     scim = FakeScimClient()
     scim.create_user(
         {
-            "externalId": "discord:user:1",
+            "externalId": "discord:100:user:1",
             "userName": "alice.1@example.com",
             "displayName": "alice",
             "active": True,
@@ -176,3 +181,33 @@ def test_foreign_scim_resources_are_untouched():
     # The foreign user still exists and was not deactivated.
     foreign = [u for u in scim.list_users() if u["externalId"] == "okta:99"]
     assert foreign and foreign[0]["active"] is True
+
+
+def test_empty_guild_refuses_to_deprovision():
+    settings = make_settings()
+    scim, _ = run_sync([member("1", "alice")], [], settings)
+    # Discord now returns zero members (e.g. Server Members intent got disabled).
+    with pytest.raises(EmptyGuildSnapshot):
+        run_sync([], [], settings, scim=scim)
+    # The existing user must be left fully intact — no deactivation.
+    (user,) = scim.list_users()
+    assert user["active"] is True
+
+
+def test_empty_guild_allowed_when_configured():
+    settings = make_settings(allow_empty_guild=True)
+    scim, _ = run_sync([member("1", "alice")], [], settings)
+    _, report = run_sync([], [], settings, scim=scim)
+    assert report.users_deactivated == 1
+
+
+def test_other_guilds_resources_are_not_deprovisioned():
+    # A user provisioned by a *different* guild sharing the same SCIM app.
+    scim = FakeScimClient()
+    scim.create_user(
+        {"externalId": "discord:200:user:9", "userName": "other", "active": True}
+    )
+    # Syncing guild 100 must not see guild 200's user as owned.
+    run_sync([member("1", "alice")], [], make_settings(discord_guild_id="100"), scim=scim)
+    other = [u for u in scim.list_users() if u["externalId"] == "discord:200:user:9"]
+    assert other and other[0]["active"] is True

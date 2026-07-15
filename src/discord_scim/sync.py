@@ -65,6 +65,10 @@ def _owns(external_id: str | None, prefix: str) -> bool:
     return bool(external_id) and external_id.startswith(f"{prefix}:")
 
 
+class EmptyGuildSnapshot(RuntimeError):
+    """Raised when Discord returns no members and destructive sync is not allowed."""
+
+
 class SyncEngine:
     """Drives a single reconciliation pass from Discord into the SCIM app."""
 
@@ -80,6 +84,17 @@ class SyncEngine:
         # mirror them as groups, so a user-only deployment never fails on the
         # role endpoint.
         members = self.discord.list_guild_members(self.settings.discord_guild_id)
+
+        # Fail-safe: an empty member list would deprovision every managed user.
+        # This usually means the Server Members intent is off or the API hiccuped,
+        # not that the guild is truly empty. Refuse unless explicitly allowed.
+        if not members and not self.settings.allow_empty_guild:
+            raise EmptyGuildSnapshot(
+                "Discord returned zero members; refusing to deprovision every "
+                "managed user. Check the bot's Server Members intent, or set "
+                "ALLOW_EMPTY_GUILD=true if the guild is genuinely empty."
+            )
+
         roles = (
             self.discord.list_guild_roles(self.settings.discord_guild_id)
             if self.settings.manage_groups
@@ -102,7 +117,7 @@ class SyncEngine:
     def _reconcile_users(
         self, desired_users: dict[str, DesiredUser], report: SyncReport
     ) -> dict[str, str]:
-        prefix = self.settings.external_id_prefix
+        prefix = self.settings.ownership_prefix
         current_users = self.scim.list_users()
         current_by_ext = {
             u["externalId"]: u
@@ -163,7 +178,7 @@ class SyncEngine:
         user_id_map: dict[str, str],
         report: SyncReport,
     ) -> None:
-        prefix = self.settings.external_id_prefix
+        prefix = self.settings.ownership_prefix
         current_groups = self.scim.list_groups()
         current_by_ext = {
             g["externalId"]: g

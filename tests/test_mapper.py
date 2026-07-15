@@ -7,6 +7,9 @@ from discord_scim.mapper import (
     user_external_id,
 )
 
+# The default ownership prefix is guild-scoped: "<prefix>:<guild_id>".
+PREFIX = make_settings().ownership_prefix  # "discord:100"
+
 
 def test_build_desired_users_skips_bots_by_default():
     members = [
@@ -14,13 +17,13 @@ def test_build_desired_users_skips_bots_by_default():
         member("2", "botty", bot=True),
     ]
     users = build_desired_users(members, make_settings())
-    assert set(users) == {user_external_id("discord", "1")}
+    assert set(users) == {user_external_id(PREFIX, "1")}
 
 
 def test_build_desired_users_includes_bots_when_configured():
     members = [member("2", "botty", bot=True)]
     users = build_desired_users(members, make_settings(include_bots=True))
-    assert user_external_id("discord", "2") in users
+    assert user_external_id(PREFIX, "2") in users
 
 
 def test_display_name_prefers_nick_then_global_name():
@@ -71,9 +74,19 @@ def test_build_desired_groups_excludes_everyone_and_managed():
     ]
     members = [member("1", "alice", roles=["200"])]
     groups = build_desired_groups(members, roles, settings)
-    assert set(groups) == {role_external_id("discord", "200")}
-    staff = groups[role_external_id("discord", "200")]
-    assert staff.member_external_ids == [user_external_id("discord", "1")]
+    assert set(groups) == {role_external_id(PREFIX, "200")}
+    staff = groups[role_external_id(PREFIX, "200")]
+    assert staff.member_external_ids == [user_external_id(PREFIX, "1")]
+
+
+def test_ownership_prefix_is_guild_scoped():
+    # The same Discord user in two different guilds yields distinct externalIds,
+    # so two guilds sharing one SCIM app never own each other's resources.
+    a = build_desired_users([member("1", "alice")], make_settings(discord_guild_id="100"))
+    b = build_desired_users([member("1", "alice")], make_settings(discord_guild_id="200"))
+    assert set(a).isdisjoint(set(b))
+    assert user_external_id("discord:100", "1") in a
+    assert user_external_id("discord:200", "1") in b
 
 
 def test_groups_disabled_returns_empty():

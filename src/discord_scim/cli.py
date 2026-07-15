@@ -10,7 +10,7 @@ import click
 from .config import Settings
 from .discord_client import DiscordClient
 from .scim_client import ScimClient
-from .sync import SyncEngine
+from .sync import EmptyGuildSnapshot, SyncEngine
 
 
 def _configure_logging(verbose: bool) -> None:
@@ -46,7 +46,10 @@ def main(dry_run: bool, interval: int | None, verbose: bool) -> None:
     settings = Settings()  # type: ignore[call-arg]  # loaded from env / .env
 
     if interval is None:
-        _run_once(settings, dry_run)
+        try:
+            _run_once(settings, dry_run)
+        except EmptyGuildSnapshot as exc:
+            raise click.ClickException(str(exc)) from exc
         return
 
     click.echo(f"Starting continuous sync every {interval}s (Ctrl-C to stop)")

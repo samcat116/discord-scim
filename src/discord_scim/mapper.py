@@ -44,7 +44,7 @@ def build_desired_users(members: list[dict], settings: Settings) -> dict[str, De
             continue
         discord_id = user["id"]
         username = user.get("username") or discord_id
-        ext_id = user_external_id(settings.external_id_prefix, discord_id)
+        ext_id = user_external_id(settings.ownership_prefix, discord_id)
         email = (
             _synthesize_email(username, discord_id, settings.email_domain)
             if settings.email_domain
@@ -78,7 +78,7 @@ def build_desired_groups(
             continue
         if settings.exclude_managed_roles and role.get("managed"):
             continue
-        ext_id = role_external_id(settings.external_id_prefix, role["id"])
+        ext_id = role_external_id(settings.ownership_prefix, role["id"])
         groups[ext_id] = DesiredGroup(
             external_id=ext_id,
             display_name=role["name"],
@@ -89,9 +89,9 @@ def build_desired_groups(
         user = member["user"]
         if user.get("bot") and not settings.include_bots:
             continue
-        member_ext_id = user_external_id(settings.external_id_prefix, user["id"])
+        member_ext_id = user_external_id(settings.ownership_prefix, user["id"])
         for role_id in member.get("roles", []):
-            group_ext_id = role_external_id(settings.external_id_prefix, role_id)
+            group_ext_id = role_external_id(settings.ownership_prefix, role_id)
             group = groups.get(group_ext_id)
             if group is not None:
                 group.member_external_ids.append(member_ext_id)

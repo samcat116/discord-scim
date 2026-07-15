@@ -53,6 +53,14 @@ class Settings(BaseSettings):
         "deactivate",
         description="What to do with users who leave the guild.",
     )
+    allow_empty_guild: bool = Field(
+        False,
+        description=(
+            "Allow a sync when Discord returns zero members, which would "
+            "deprovision every managed user. Off by default as a safety guard "
+            "against a missing Server Members intent or a transient API error."
+        ),
+    )
 
     # --- HTTP ---
     request_timeout: float = Field(30.0, description="Per-request timeout in seconds.")
@@ -60,3 +68,13 @@ class Settings(BaseSettings):
     @property
     def scim_base_url_normalized(self) -> str:
         return self.scim_base_url.rstrip("/")
+
+    @property
+    def ownership_prefix(self) -> str:
+        """externalId namespace, scoped per guild.
+
+        Including the guild id means two guilds syncing into the same SCIM app
+        never see each other's resources as "owned", so a run for one guild can
+        never deprovision another guild's users or groups.
+        """
+        return f"{self.external_id_prefix}:{self.discord_guild_id}"
