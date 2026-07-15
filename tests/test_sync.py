@@ -90,6 +90,19 @@ def test_deleted_role_removes_group():
     assert scim.list_groups() == []
 
 
+def test_group_with_null_members_is_in_sync():
+    # A provider that stored an empty group as members: null must not crash the
+    # next reconciliation of a role that has no members.
+    settings = make_settings()
+    scim = FakeScimClient()
+    scim.create_group(
+        {"externalId": "discord:role:200", "displayName": "Staff", "members": None}
+    )
+    _, report = run_sync([member("1", "a", roles=[])], [role("200", "Staff")], settings, scim=scim)
+    assert report.groups_updated == 0
+    assert report.groups_created == 0
+
+
 def test_dry_run_makes_no_changes():
     members = [member("1", "alice", roles=["200"])]
     roles = [role("200", "Staff")]

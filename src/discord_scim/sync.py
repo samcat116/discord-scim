@@ -55,7 +55,9 @@ def _user_needs_update(desired: DesiredUser, current: dict) -> bool:
 
 
 def _group_members(current: dict) -> set[str]:
-    return {m.get("value") for m in current.get("members", [])}
+    # A SCIM provider may return `members: null` for an empty group, so coalesce
+    # to an empty list rather than iterating None.
+    return {m.get("value") for m in (current.get("members") or [])}
 
 
 def _owns(external_id: str | None, prefix: str) -> bool:

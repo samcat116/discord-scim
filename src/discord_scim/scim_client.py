@@ -19,6 +19,13 @@ def _raise_for_status(resp: httpx.Response, action: str) -> None:
         raise ScimError(f"SCIM {action} failed: {resp.status_code} {resp.text}")
 
 
+def _body(resp: httpx.Response) -> dict:
+    """Parse a SCIM response body, tolerating an empty 204 No Content reply."""
+    if resp.status_code == 204 or not resp.content:
+        return {}
+    return resp.json()
+
+
 class ScimClient:
     """Thin wrapper over the SCIM 2.0 /Users and /Groups endpoints."""
 
@@ -84,12 +91,12 @@ class ScimClient:
     def create_user(self, payload: dict) -> dict:
         resp = self._request("POST", "/Users", json=payload)
         _raise_for_status(resp, "create user")
-        return resp.json()
+        return _body(resp)
 
     def replace_user(self, user_id: str, payload: dict) -> dict:
         resp = self._request("PUT", f"/Users/{user_id}", json=payload)
         _raise_for_status(resp, "replace user")
-        return resp.json()
+        return _body(resp)
 
     def deactivate_user(self, user_id: str) -> dict:
         ops = {
@@ -98,7 +105,7 @@ class ScimClient:
         }
         resp = self._request("PATCH", f"/Users/{user_id}", json=ops)
         _raise_for_status(resp, "deactivate user")
-        return resp.json()
+        return _body(resp)
 
     def delete_user(self, user_id: str) -> None:
         resp = self._request("DELETE", f"/Users/{user_id}")
@@ -111,12 +118,12 @@ class ScimClient:
     def create_group(self, payload: dict) -> dict:
         resp = self._request("POST", "/Groups", json=payload)
         _raise_for_status(resp, "create group")
-        return resp.json()
+        return _body(resp)
 
     def replace_group(self, group_id: str, payload: dict) -> dict:
         resp = self._request("PUT", f"/Groups/{group_id}", json=payload)
         _raise_for_status(resp, "replace group")
-        return resp.json()
+        return _body(resp)
 
     def delete_group(self, group_id: str) -> None:
         resp = self._request("DELETE", f"/Groups/{group_id}")
