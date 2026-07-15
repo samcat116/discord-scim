@@ -28,9 +28,11 @@ def _display_name(member: dict) -> str:
     )
 
 
-def _synthesize_email(username: str, domain: str) -> str:
+def _synthesize_email(username: str, discord_id: str, domain: str) -> str:
     local = _EMAIL_LOCALPART.sub(".", username).strip(".").lower() or "user"
-    return f"{local}@{domain}"
+    # Append the Discord snowflake so two members never collide, even when
+    # sanitization collapses distinct usernames to the same local part.
+    return f"{local}.{discord_id}@{domain}"
 
 
 def build_desired_users(members: list[dict], settings: Settings) -> dict[str, DesiredUser]:
@@ -40,16 +42,19 @@ def build_desired_users(members: list[dict], settings: Settings) -> dict[str, De
         user = member["user"]
         if user.get("bot") and not settings.include_bots:
             continue
-        username = user.get("username") or user["id"]
-        ext_id = user_external_id(settings.external_id_prefix, user["id"])
+        discord_id = user["id"]
+        username = user.get("username") or discord_id
+        ext_id = user_external_id(settings.external_id_prefix, discord_id)
         email = (
-            _synthesize_email(username, settings.email_domain)
+            _synthesize_email(username, discord_id, settings.email_domain)
             if settings.email_domain
             else None
         )
+        # SCIM requires a unique userName, but Discord usernames are not
+        # guaranteed unique. The snowflake makes it stable and collision-free.
         desired[ext_id] = DesiredUser(
             external_id=ext_id,
-            user_name=email or username,
+            user_name=email or f"{username}.{discord_id}",
             display_name=_display_name(member),
             active=True,
             email=email,

@@ -30,17 +30,36 @@ def test_display_name_prefers_nick_then_global_name():
         member("3", "carol"),
     ]
     users = build_desired_users(members, make_settings())
-    names = {u.user_name: u.display_name for u in users.values()}
-    assert names == {"alice": "Ally", "bob": "Bobby", "carol": "carol"}
+    names = {u.display_name for u in users.values()}
+    assert names == {"Ally", "Bobby", "carol"}
 
 
 def test_email_synthesis_and_username():
-    members = [member("1", "Alice Cooper!")]
+    members = [member("42", "Alice Cooper!")]
     users = build_desired_users(members, make_settings(email_domain="example.com"))
     u = next(iter(users.values()))
-    assert u.email == "alice.cooper@example.com"
+    # The snowflake is appended so the address is unique and stable.
+    assert u.email == "alice.cooper.42@example.com"
     # userName becomes the email when a domain is configured.
-    assert u.user_name == "alice.cooper@example.com"
+    assert u.user_name == "alice.cooper.42@example.com"
+
+
+def test_username_includes_snowflake_for_uniqueness():
+    users = build_desired_users([member("77", "alice")], make_settings())
+    u = next(iter(users.values()))
+    assert u.user_name == "alice.77"
+
+
+def test_colliding_usernames_stay_unique():
+    # Two members whose sanitized emails would otherwise collapse to "a.b"
+    # ("a b" has its space replaced with a dot).
+    members = [member("1", "a b"), member("2", "a.b")]
+    settings = make_settings(email_domain="example.com")
+    users = build_desired_users(members, settings)
+    emails = {u.email for u in users.values()}
+    user_names = {u.user_name for u in users.values()}
+    assert emails == {"a.b.1@example.com", "a.b.2@example.com"}
+    assert len(user_names) == 2
 
 
 def test_build_desired_groups_excludes_everyone_and_managed():
